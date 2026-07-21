@@ -1,0 +1,60 @@
+{
+  "id": "aws_lambda",
+  "name": "AWS Lambda",
+  "name_en": "AWS Lambda",
+  "version": "1.0.0",
+  "description": "Invocación de funciones AWS Lambda: invocar función con payload, consultar resultado en logs recientes y listar funciones",
+  "description_en": "Invoke AWS Lambda functions: invoke a function with a payload, review the result via recent logs, and list functions",
+  "icon": "icon.svg",
+  "category": "cloud",
+  "category_en": "cloud",
+  "keywords": ["aws", "lambda", "amazon", "serverless", "función", "function", "cloud", "nube", "invocar", "invoke"],
+  "library": {
+    "package": "ruvic-aws-lambda-connector",
+    "install": "pip install git+https://github.com/Dgirto/AWS-Lambda.git#subdirectory=lib",
+    "import_name": "ruvic_aws_lambda_connector"
+  },
+  "auth_modes": [
+    {
+      "id": "access_key",
+      "label": "Access Key ID y Secret Access Key",
+      "fields": [
+        {
+          "key": "access_key_id",
+          "label": "Access Key ID",
+          "type": "text",
+          "required": true,
+          "placeholder": "AKIAIOSFODNN7EXAMPLE"
+        },
+        {
+          "key": "secret_access_key",
+          "label": "Secret Access Key",
+          "type": "password",
+          "secret": true,
+          "required": true
+        },
+        {
+          "key": "region",
+          "label": "Región de AWS",
+          "type": "text",
+          "required": true,
+          "placeholder": "us-east-1"
+        },
+        {
+          "key": "connect_timeout",
+          "label": "Timeout de conexión (segundos)",
+          "type": "number",
+          "required": false,
+          "default": "10"
+        }
+      ]
+    }
+  ],
+  "env_prefix": "RUVIC_AWS_LAMBDA_",
+  "operations": ["lambda.list_functions", "lambda.invoke", "lambda.get_logs"],
+  "test_connection": true,
+  "docs": {
+    "skill": "SKILL.md",
+    "permissions_note": "El usuario o rol IAM necesita lambda:ListFunctions, lambda:InvokeFunction, logs:DescribeLogStreams y logs:GetLogEvents. Se recomienda restringir el Resource de lambda:InvokeFunction a un prefijo de nombre de función (ej. arn:aws:lambda:*:*:function:ruvic-*) en vez de todas las funciones de la cuenta."
+  }
+}

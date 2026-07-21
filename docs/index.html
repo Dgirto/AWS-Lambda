@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title data-i18n="doc_title">Conector AWS Lambda — Ruvic</title>
+  <link rel="stylesheet" href="assets/ruvic.css">
+</head>
+<body class="guide">
+  <main class="ruvic-container">
+
+    <nav class="ruvic-toc" aria-label="Índice">
+      <h2 data-i18n="toc_title">Contenido</h2>
+      <ol>
+        <li><a href="#que-es" data-i18n="toc.que_es">¿Qué es y para qué sirve?</a></li>
+        <li><a href="#prerrequisitos" data-i18n="toc.prerrequisitos">Prerrequisitos</a></li>
+        <li><a href="#configuracion-fabricante" data-i18n="toc.configuracion_fabricante">Configuración en el fabricante</a></li>
+        <li><a href="#permisos" data-i18n="toc.permisos">Permisos requeridos</a></li>
+        <li><a href="#configuracion-ruvic" data-i18n="toc.configuracion_ruvic">Configuración en Ruvic</a></li>
+        <li><a href="#verificacion" data-i18n="toc.verificacion">Verificación</a></li>
+        <li><a href="#solucion-problemas" data-i18n="toc.solucion_problemas">Solución de problemas</a></li>
+        <li><a href="#faq-seguridad" data-i18n="toc.faq_seguridad">Preguntas frecuentes y notas de seguridad</a></li>
+      </ol>
+    </nav>
+
+    <h1 data-i18n="guide_title">AWS Lambda</h1>
+    <p class="guide-updated">{{ULTIMA_ACTUALIZACION}}</p>
+
+    <!-- ============ 1. QUÉ ES ============ -->
+    <section>
+      <h2 id="que-es" data-i18n="section.que_es">¿Qué es y para qué sirve?</h2>
+      <p data-i18n="que_es.body">El conector AWS Lambda permite que el agente de Ruvic invoque tus funciones serverless. Una vez configurado, puedes pedirle al agente cosas como:</p>
+      <ul>
+        <li data-i18n="que_es.ej1">“Ejecuta la función procesar-pedido con el id 4521 y dime qué respondió.”</li>
+        <li data-i18n="que_es.ej2">“¿Qué funciones Lambda tenemos desplegadas?”</li>
+        <li data-i18n="que_es.ej3">“Revisa los logs recientes de la función enviar-reporte para ver si falló.”</li>
+      </ul>
+      <p data-i18n="que_es.ops">Operaciones soportadas:</p>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.operacion">Operación</th>
+            <th data-i18n="table.que_hace">Qué hace</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>lambda.list_functions</code></td>
+            <td data-i18n="ops.list">Lista las funciones Lambda de la región configurada</td>
+          </tr>
+          <tr>
+            <td><code>lambda.invoke</code></td>
+            <td data-i18n="ops.invoke">Invoca una función con un payload JSON, de forma síncrona o asíncrona</td>
+          </tr>
+          <tr>
+            <td><code>lambda.get_logs</code></td>
+            <td data-i18n="ops.logs">Consulta los logs recientes de una función en CloudWatch, para revisar el resultado de invocaciones pasadas</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="callout callout-warning">
+        <span class="callout-title" data-i18n="que_es.callout.title">Este conector ejecuta código</span>
+        <span data-i18n="que_es.callout.body">lambda.invoke dispara la ejecución real de la función, con todos sus efectos secundarios (lo que sea que la función haga). Se recomienda restringir el acceso IAM a un prefijo de nombres de función dedicado a Ruvic.</span>
+      </div>
+    </section>
+
+    <!-- ============ 2. PRERREQUISITOS ============ -->
+    <section>
+      <h2 id="prerrequisitos" data-i18n="section.prerrequisitos">Prerrequisitos</h2>
+      <ul>
+        <li data-i18n="prer.cuenta">Una cuenta de <strong>AWS</strong> con al menos una función Lambda ya desplegada.</li>
+        <li data-i18n="prer.admin">Acceso a la consola de <strong>IAM</strong> para crear un usuario y su policy, solo durante la configuración inicial.</li>
+        <li data-i18n="prer.datos">La región de AWS donde están desplegadas las funciones (ej. <code>us-east-1</code>).</li>
+      </ul>
+    </section>
+
+    <!-- ============ 3. CONFIGURACIÓN EN EL FABRICANTE ============ -->
+    <section>
+      <h2 id="configuracion-fabricante" data-i18n="section.configuracion_fabricante">Configuración en el fabricante</h2>
+      <p data-i18n="fab.intro">Vas a crear un <strong>usuario IAM dedicado</strong> para Ruvic, con permiso de invocación restringido a las funciones que le corresponden. No reutilices credenciales root ni las de otra aplicación.</p>
+      <ol class="ruvic-steps">
+        <li>
+          <strong data-i18n="fab.p1.t">Define un prefijo de nombres para las funciones que expondrás a Ruvic.</strong>
+          <p data-i18n="fab.p1.b">Por convención, usa un prefijo dedicado (ej. <code>ruvic-*</code>) al nombrar las funciones que quieres que el agente pueda invocar. Esto permite escribir una policy IAM precisa en el siguiente paso.</p>
+        </li>
+        <li>
+          <strong data-i18n="fab.p2.t">Crea la policy IAM.</strong>
+          <p data-i18n="fab.p2.b">En IAM → Policies → Create policy → pestaña JSON:</p>
+<pre><code>{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["lambda:ListFunctions"],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["lambda:InvokeFunction"],
+      "Resource": "arn:aws:lambda:*:*:function:ruvic-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["logs:DescribeLogStreams", "logs:GetLogEvents"],
+      "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda/ruvic-*:*"
+    }
+  ]
+}</code></pre>
+          <div class="callout callout-info">
+            <span class="callout-title" data-i18n="fab.p2.note.title">Nota</span>
+            <span data-i18n="fab.p2.note.body">lambda:ListFunctions no admite restricción por Resource (solo "*"), por eso list_functions siempre mostrará el nombre de todas las funciones de la cuenta, aunque solo pueda invocar las que coincidan con el prefijo.</span>
+          </div>
+        </li>
+        <li>
+          <strong data-i18n="fab.p3.t">Crea el usuario IAM y adjunta la policy.</strong>
+          <p data-i18n="fab.p3.b">En IAM → Users → Create user → marca "Provide user access to the AWS Management Console" en NO (es un usuario programático) → adjunta la policy del paso 2.</p>
+          <div class="screenshot-placeholder" data-i18n="fab.p3.img">[ Captura: creación de usuario IAM con la policy adjunta — reemplazar por assets/img/lambda-iam-user.png ]</div>
+        </li>
+        <li>
+          <strong data-i18n="fab.p4.t">Genera las claves de acceso.</strong>
+          <p data-i18n="fab.p4.b">En la página del usuario → pestaña "Security credentials" → "Create access key" → tipo "Application running outside AWS". Copia el <strong>Access Key ID</strong> y el <strong>Secret Access Key</strong> (este último solo se muestra una vez): los usarás en el formulario de Ruvic.</p>
+        </li>
+        <li>
+          <strong data-i18n="fab.p5.t">Verifica el acceso desde la línea de comandos.</strong>
+          <p data-i18n="fab.p5.b">Con el AWS CLI configurado con esas credenciales:</p>
+<pre><code>aws lambda list-functions --region us-east-1</code></pre>
+          <p data-i18n="fab.p5.result">Si responde con la lista de funciones (aunque esté vacía), el fabricante quedó listo. Anota estos valores para la siguiente sección: Access Key ID, Secret Access Key y región.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============ 4. PERMISOS ============ -->
+    <section>
+      <h2 id="permisos" data-i18n="section.permisos">Permisos requeridos</h2>
+      <p data-i18n="perm.intro">Principio de mínimo privilegio: el usuario de Ruvic solo necesita estos permisos, limitados al prefijo de funciones dedicado. No otorgues <code>lambda:*</code>, <code>lambda:CreateFunction</code>, <code>lambda:DeleteFunction</code> ni <code>lambda:UpdateFunctionCode</code>.</p>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.permiso">Permiso</th>
+            <th data-i18n="table.para_que">Para qué sirve</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>lambda:ListFunctions</code></td>
+            <td data-i18n="perm.list.body">Listar las funciones de la cuenta (<code>lambda.list_functions</code>)</td>
+          </tr>
+          <tr>
+            <td><code>lambda:InvokeFunction</code> <span data-i18n="perm.invoke.scope">(por prefijo de función)</span></td>
+            <td data-i18n="perm.invoke.body">Ejecutar una función con un payload (<code>lambda.invoke</code>)</td>
+          </tr>
+          <tr>
+            <td><code>logs:DescribeLogStreams</code>, <code>logs:GetLogEvents</code> <span data-i18n="perm.logs.scope">(por prefijo de log group)</span></td>
+            <td data-i18n="perm.logs.body">Consultar los logs recientes de una función (<code>lambda.get_logs</code>)</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ============ 5. CONFIGURACIÓN EN RUVIC ============ -->
+    <section>
+      <h2 id="configuracion-ruvic" data-i18n="section.configuracion_ruvic">Configuración en Ruvic</h2>
+      <p data-i18n="ruvic.intro">Entra a <strong>Settings → Conectores</strong>, busca la tarjeta <strong>AWS Lambda</strong> y pulsa <strong>Configurar</strong>. Diligencia el formulario con los valores que obtuviste en la sección anterior:</p>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.campo">Campo del formulario</th>
+            <th data-i18n="table.valor">Valor</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-i18n="ruvic.f.accesskey">Access Key ID</td>
+            <td data-i18n="ruvic.v.accesskey">El Access Key ID del paso 4</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.secretkey">Secret Access Key</td>
+            <td data-i18n="ruvic.v.secretkey">El Secret Access Key del paso 4. Se guarda cifrado como secreto: la interfaz no volverá a mostrarlo</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.region">Región de AWS</td>
+            <td data-i18n="ruvic.v.region">La región donde están desplegadas las funciones (ej. <code>us-east-1</code>)</td>
+          </tr>
+          <tr>
+            <td data-i18n="ruvic.f.timeout">Timeout de conexión</td>
+            <td data-i18n="ruvic.v.timeout">Opcional; <code>10</code> segundos por defecto</td>
+          </tr>
+        </tbody>
+      </table>
+      <p data-i18n="ruvic.save">Guarda y pulsa <span class="ruvic-button">Probar conexión</span> — la plataforma verificará el acceso a Lambda en la región configurada.</p>
+      <div class="screenshot-placeholder" data-i18n="ruvic.img">[ Captura: formulario del conector AWS Lambda en Settings → Conectores — reemplazar por assets/img/lambda-form.png ]</div>
+    </section>
+
+    <!-- ============ 6. VERIFICACIÓN ============ -->
+    <section>
+      <h2 id="verificacion" data-i18n="section.verificacion">Verificación</h2>
+      <ol class="ruvic-steps">
+        <li>
+          <strong data-i18n="ver.p1.t">Test de conexión exitoso.</strong>
+          <p data-i18n="ver.p1.b">El botón <em>Probar conexión</em> debe responder: <em>“Conexión exitosa a AWS Lambda en us-east-1”</em>. La tarjeta del conector cambia a estado <strong>Configurado</strong>.</p>
+        </li>
+        <li>
+          <strong data-i18n="ver.p2.t">Automatización mínima de prueba.</strong>
+          <p data-i18n="ver.p2.b">Abre una conversación nueva con el agente y pídele: <em>“Lista las funciones Lambda disponibles e invoca la función [nombre-con-prefijo-ruvic] con un payload vacío.”</em> El agente debe listar las funciones e invocar la indicada, mostrando el resultado. Si lo hace, el conector quedó operativo de punta a punta.</p>
+        </li>
+      </ol>
+    </section>
+
+    <!-- ============ 7. SOLUCIÓN DE PROBLEMAS ============ -->
+    <section>
+      <h2 id="solucion-problemas" data-i18n="section.solucion_problemas">Solución de problemas</h2>
+      <table>
+        <thead>
+          <tr>
+            <th data-i18n="table.sintoma">Mensaje / síntoma</th>
+            <th data-i18n="table.causa">Causa probable y solución</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td data-i18n="prob.s1">“Credenciales inválidas o sin permiso IAM suficiente”</td>
+            <td data-i18n="prob.c1">Access Key o Secret Key mal copiados, o la función invocada no coincide con el prefijo autorizado en la policy. Reintenta los pasos 2 y 4 de la sección 3.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s2">“No se pudo conectar al servicio Lambda … (timeout)”</td>
+            <td data-i18n="prob.c2">La región configurada no coincide con la región real donde están las funciones. Verifica con <code>aws lambda list-functions --region tu-region</code>.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s3">“La función no existe”</td>
+            <td data-i18n="prob.c3">Nombre de función mal escrito, o la función está en otra región. Usa lambda.list_functions primero para confirmar el nombre exacto.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s4">El agente invoca la función pero “no hay logs”</td>
+            <td data-i18n="prob.c4">La función acaba de ejecutarse y CloudWatch aún no propagó los logs (puede tardar unos segundos), o falta el permiso logs:GetLogEvents sobre ese log group. Repite el paso 2 de la sección 3.</td>
+          </tr>
+          <tr>
+            <td data-i18n="prob.s5">El conector aparece “Sin configurar” tras guardar</td>
+            <td data-i18n="prob.c5">Algún campo obligatorio quedó vacío. Ábrelo de nuevo y completa Access Key ID, Secret Access Key y región.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ============ 8. FAQ Y SEGURIDAD ============ -->
+    <section>
+      <h2 id="faq-seguridad" data-i18n="section.faq_seguridad">Preguntas frecuentes y notas de seguridad</h2>
+
+      <h3 data-i18n="faq.q1">¿El agente puede invocar cualquier función de mi cuenta?</h3>
+      <p data-i18n="faq.a1">Solo si tú lo permites en la policy IAM. Con el prefijo ruvic-* del ejemplo, el agente solo puede ejecutar (invocar) las funciones con ese prefijo, aunque list_functions siempre muestre el nombre de todas (esa acción no admite restricción por Resource).</p>
+
+      <h3 data-i18n="faq.q2">¿Dónde queda guardado el Secret Access Key?</h3>
+      <p data-i18n="faq.a2">Como secreto en el almacén de credenciales de la plataforma, asociado a tu usuario. La interfaz nunca vuelve a mostrarlo; solo indica “definida”. Para cambiarlo, escribe uno nuevo en el formulario; para conservarlo al editar otros campos, deja el campo vacío.</p>
+
+      <h3 data-i18n="faq.q3">Rotación de credenciales</h3>
+      <p data-i18n="faq.a3">Recomendado cada 90 días o según tu política: genera un nuevo Access Key en IAM → Security credentials, actualízalo en el formulario del conector, prueba la conexión, y luego desactiva/elimina la clave anterior desde la consola de AWS.</p>
+
+      <h3 data-i18n="faq.q4">¿Qué hago si las credenciales se comprometen?</h3>
+      <ol>
+        <li data-i18n="faq.a4.li1">Desactiva o elimina el Access Key de inmediato en IAM → Security credentials.</li>
+        <li data-i18n="faq.a4.li2">Revisa la actividad reciente en AWS CloudTrail para ese usuario (invocaciones de funciones que no reconozcas).</li>
+        <li data-i18n="faq.a4.li3">Genera un Access Key nuevo y actualízalo en el formulario del conector.</li>
+      </ol>
+
+      <h3 data-i18n="faq.q5">¿Puedo saber el resultado de una invocación asíncrona?</h3>
+      <p data-i18n="faq.a5">AWS no expone una API para consultar el resultado de una invocación Lambda por request id. Usa lambda.get_logs para revisar los logs recientes de la función después de una invocación en modo "Event", o diseña tu función para escribir el resultado en un destino consultable (una base de datos, una cola, etc.).</p>
+
+      <div class="callout callout-warning">
+        <span class="callout-title" data-i18n="faq.bp.title">Buenas prácticas</span>
+        <span data-i18n="faq.bp.body">Usa siempre un usuario IAM dedicado con permiso de invocación limitado a un prefijo de funciones; nunca uses las credenciales root de la cuenta de AWS; revisa function_error en cada respuesta antes de asumir que la invocación fue exitosa; y evita compartir el Secret Access Key por canales no seguros.</span>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const I18N = {
+      es: {
+        doc_title: "Conector AWS Lambda — Ruvic",
+        toc_title: "Contenido",
+        "toc.que_es": "¿Qué es y para qué sirve?",
+        "toc.prerrequisitos": "Prerrequisitos",
+        "toc.configuracion_fabricante": "Configuración en el fabricante",
+        "toc.permisos": "Permisos requeridos",
+        "toc.configuracion_ruvic": "Configuración en Ruvic",
+        "toc.verificacion": "Verificación",
+        "toc.solucion_problemas": "Solución de problemas",
+        "toc.faq_seguridad": "Preguntas frecuentes y notas de seguridad",
+        guide_title: "AWS Lambda",
+        "section.que_es": "¿Qué es y para qué sirve?",
+        "que_es.body": "El conector AWS Lambda permite que el agente de Ruvic invoque tus funciones serverless. Una vez configurado, puedes pedirle al agente cosas como:",
+        "que_es.ej1": "“Ejecuta la función procesar-pedido con el id 4521 y dime qué respondió.”",
+        "que_es.ej2": "“¿Qué funciones Lambda tenemos desplegadas?”",
+        "que_es.ej3": "“Revisa los logs recientes de la función enviar-reporte para ver si falló.”",
+        "que_es.ops": "Operaciones soportadas:",
+        "table.operacion": "Operación",
+        "table.que_hace": "Qué hace",
+        "ops.list": "Lista las funciones Lambda de la región configurada",
+        "ops.invoke": "Invoca una función con un payload JSON, de forma síncrona o asíncrona",
+        "ops.logs": "Consulta los logs recientes de una función en CloudWatch, para revisar el resultado de invocaciones pasadas",
+        "que_es.callout.title": "Este conector ejecuta código",
+        "que_es.callout.body": "lambda.invoke dispara la ejecución real de la función, con todos sus efectos secundarios (lo que sea que la función haga). Se recomienda restringir el acceso IAM a un prefijo de nombres de función dedicado a Ruvic.",
+        "section.prerrequisitos": "Prerrequisitos",
+        "prer.cuenta": "Una cuenta de AWS con al menos una función Lambda ya desplegada.",
+        "prer.admin": "Acceso a la consola de IAM para crear un usuario y su policy, solo durante la configuración inicial.",
+        "prer.datos": "La región de AWS donde están desplegadas las funciones (ej. us-east-1).",
+        "section.configuracion_fabricante": "Configuración en el fabricante",
+        "fab.intro": "Vas a crear un usuario IAM dedicado para Ruvic, con permiso de invocación restringido a las funciones que le corresponden. No reutilices credenciales root ni las de otra aplicación.",
+        "fab.p1.t": "Define un prefijo de nombres para las funciones que expondrás a Ruvic.",
+        "fab.p1.b": "Por convención, usa un prefijo dedicado (ej. ruvic-*) al nombrar las funciones que quieres que el agente pueda invocar. Esto permite escribir una policy IAM precisa en el siguiente paso.",
+        "fab.p2.t": "Crea la policy IAM.",
+        "fab.p2.b": "En IAM → Policies → Create policy → pestaña JSON:",
+        "fab.p2.note.title": "Nota",
+        "fab.p2.note.body": "lambda:ListFunctions no admite restricción por Resource (solo \"*\"), por eso list_functions siempre mostrará el nombre de todas las funciones de la cuenta, aunque solo pueda invocar las que coincidan con el prefijo.",
+        "fab.p3.t": "Crea el usuario IAM y adjunta la policy.",
+        "fab.p3.b": "En IAM → Users → Create user → marca \"Provide user access to the AWS Management Console\" en NO (es un usuario programático) → adjunta la policy del paso 2.",
+        "fab.p3.img": "[ Captura: creación de usuario IAM con la policy adjunta — reemplazar por assets/img/lambda-iam-user.png ]",
+        "fab.p4.t": "Genera las claves de acceso.",
+        "fab.p4.b": "En la página del usuario → pestaña \"Security credentials\" → \"Create access key\" → tipo \"Application running outside AWS\". Copia el Access Key ID y el Secret Access Key (este último solo se muestra una vez): los usarás en el formulario de Ruvic.",
+        "fab.p5.t": "Verifica el acceso desde la línea de comandos.",
+        "fab.p5.b": "Con el AWS CLI configurado con esas credenciales:",
+        "fab.p5.result": "Si responde con la lista de funciones (aunque esté vacía), el fabricante quedó listo. Anota estos valores para la siguiente sección: Access Key ID, Secret Access Key y región.",
+        "section.permisos": "Permisos requeridos",
+        "perm.intro": "Principio de mínimo privilegio: el usuario de Ruvic solo necesita estos permisos, limitados al prefijo de funciones dedicado. No otorgues lambda:*, lambda:CreateFunction, lambda:DeleteFunction ni lambda:UpdateFunctionCode.",
+        "table.permiso": "Permiso",
+        "table.para_que": "Para qué sirve",
+        "perm.list.body": "Listar las funciones de la cuenta (lambda.list_functions)",
+        "perm.invoke.scope": "(por prefijo de función)",
+        "perm.invoke.body": "Ejecutar una función con un payload (lambda.invoke)",
+        "perm.logs.scope": "(por prefijo de log group)",
+        "perm.logs.body": "Consultar los logs recientes de una función (lambda.get_logs)",
+        "section.configuracion_ruvic": "Configuración en Ruvic",
+        "ruvic.intro": "Entra a Settings → Conectores, busca la tarjeta AWS Lambda y pulsa Configurar. Diligencia el formulario con los valores que obtuviste en la sección anterior:",
+        "table.campo": "Campo del formulario",
+        "table.valor": "Valor",
+        "ruvic.f.accesskey": "Access Key ID",
+        "ruvic.v.accesskey": "El Access Key ID del paso 4",
+        "ruvic.f.secretkey": "Secret Access Key",
+        "ruvic.v.secretkey": "El Secret Access Key del paso 4. Se guarda cifrado como secreto: la interfaz no volverá a mostrarlo",
+        "ruvic.f.region": "Región de AWS",
+        "ruvic.v.region": "La región donde están desplegadas las funciones (ej. us-east-1)",
+        "ruvic.f.timeout": "Timeout de conexión",
+        "ruvic.v.timeout": "Opcional; 10 segundos por defecto",
+        "ruvic.save": "Guarda y pulsa Probar conexión — la plataforma verificará el acceso a Lambda en la región configurada.",
+        "ruvic.img": "[ Captura: formulario del conector AWS Lambda en Settings → Conectores — reemplazar por assets/img/lambda-form.png ]",
+        "section.verificacion": "Verificación",
+        "ver.p1.t": "Test de conexión exitoso.",
+        "ver.p1.b": "El botón Probar conexión debe responder: “Conexión exitosa a AWS Lambda en us-east-1”. La tarjeta del conector cambia a estado Configurado.",
+        "ver.p2.t": "Automatización mínima de prueba.",
+        "ver.p2.b": "Abre una conversación nueva con el agente y pídele: “Lista las funciones Lambda disponibles e invoca la función [nombre-con-prefijo-ruvic] con un payload vacío.” El agente debe listar las funciones e invocar la indicada, mostrando el resultado. Si lo hace, el conector quedó operativo de punta a punta.",
+        "section.solucion_problemas": "Solución de problemas",
+        "table.sintoma": "Mensaje / síntoma",
+        "table.causa": "Causa probable y solución",
+        "prob.s1": "“Credenciales inválidas o sin permiso IAM suficiente”",
+        "prob.c1": "Access Key o Secret Key mal copiados, o la función invocada no coincide con el prefijo autorizado en la policy. Reintenta los pasos 2 y 4 de la sección 3.",
+        "prob.s2": "“No se pudo conectar al servicio Lambda … (timeout)”",
+        "prob.c2": "La región configurada no coincide con la región real donde están las funciones. Verifica con aws lambda list-functions --region tu-region.",
+        "prob.s3": "“La función no existe”",
+        "prob.c3": "Nombre de función mal escrito, o la función está en otra región. Usa lambda.list_functions primero para confirmar el nombre exacto.",
+        "prob.s4": "El agente invoca la función pero “no hay logs”",
+        "prob.c4": "La función acaba de ejecutarse y CloudWatch aún no propagó los logs (puede tardar unos segundos), o falta el permiso logs:GetLogEvents sobre ese log group. Repite el paso 2 de la sección 3.",
+        "prob.s5": "El conector aparece “Sin configurar” tras guardar",
+        "prob.c5": "Algún campo obligatorio quedó vacío. Ábrelo de nuevo y completa Access Key ID, Secret Access Key y región.",
+        "section.faq_seguridad": "Preguntas frecuentes y notas de seguridad",
+        "faq.q1": "¿El agente puede invocar cualquier función de mi cuenta?",
+        "faq.a1": "Solo si tú lo permites en la policy IAM. Con el prefijo ruvic-* del ejemplo, el agente solo puede ejecutar (invocar) las funciones con ese prefijo, aunque list_functions siempre muestre el nombre de todas (esa acción no admite restricción por Resource).",
+        "faq.q2": "¿Dónde queda guardado el Secret Access Key?",
+        "faq.a2": "Como secreto en el almacén de credenciales de la plataforma, asociado a tu usuario. La interfaz nunca vuelve a mostrarlo; solo indica “definida”. Para cambiarlo, escribe uno nuevo en el formulario; para conservarlo al editar otros campos, deja el campo vacío.",
+        "faq.q3": "Rotación de credenciales",
+        "faq.a3": "Recomendado cada 90 días o según tu política: genera un nuevo Access Key en IAM → Security credentials, actualízalo en el formulario del conector, prueba la conexión, y luego desactiva/elimina la clave anterior desde la consola de AWS.",
+        "faq.q4": "¿Qué hago si las credenciales se comprometen?",
+        "faq.a4.li1": "Desactiva o elimina el Access Key de inmediato en IAM → Security credentials.",
+        "faq.a4.li2": "Revisa la actividad reciente en AWS CloudTrail para ese usuario (invocaciones de funciones que no reconozcas).",
+        "faq.a4.li3": "Genera un Access Key nuevo y actualízalo en el formulario del conector.",
+        "faq.q5": "¿Puedo saber el resultado de una invocación asíncrona?",
+        "faq.a5": "AWS no expone una API para consultar el resultado de una invocación Lambda por request id. Usa lambda.get_logs para revisar los logs recientes de la función después de una invocación en modo \"Event\", o diseña tu función para escribir el resultado en un destino consultable (una base de datos, una cola, etc.).",
+        "faq.bp.title": "Buenas prácticas",
+        "faq.bp.body": "Usa siempre un usuario IAM dedicado con permiso de invocación limitado a un prefijo de funciones; nunca uses las credenciales root de la cuenta de AWS; revisa function_error en cada respuesta antes de asumir que la invocación fue exitosa; y evita compartir el Secret Access Key por canales no seguros.",
+      },
+      en: {
+        doc_title: "AWS Lambda Connector — Ruvic",
+        toc_title: "Contents",
+        "toc.que_es": "What it is and what it’s for",
+        "toc.prerrequisitos": "Prerequisites",
+        "toc.configuracion_fabricante": "Vendor / provider setup",
+        "toc.permisos": "Required permissions",
+        "toc.configuracion_ruvic": "Configuration in Ruvic",
+        "toc.verificacion": "Verification",
+        "toc.solucion_problemas": "Troubleshooting",
+        "toc.faq_seguridad": "FAQ and security notes",
+        guide_title: "AWS Lambda",
+        "section.que_es": "What it is and what it’s for",
+        "que_es.body": "The AWS Lambda connector lets the Ruvic agent invoke your serverless functions. Once configured, you can ask the agent things like:",
+        "que_es.ej1": "“Run the procesar-pedido function with id 4521 and tell me what it returned.”",
+        "que_es.ej2": "“What Lambda functions do we have deployed?”",
+        "que_es.ej3": "“Check the recent logs of the enviar-reporte function to see if it failed.”",
+        "que_es.ops": "Supported operations:",
+        "table.operacion": "Operation",
+        "table.que_hace": "What it does",
+        "ops.list": "Lists the Lambda functions in the configured region",
+        "ops.invoke": "Invokes a function with a JSON payload, synchronously or asynchronously",
+        "ops.logs": "Queries a function's recent CloudWatch logs, to review the result of past invocations",
+        "que_es.callout.title": "This connector executes code",
+        "que_es.callout.body": "lambda.invoke triggers the actual execution of the function, with all its side effects (whatever the function does). It's recommended to restrict IAM access to a function-name prefix dedicated to Ruvic.",
+        "section.prerrequisitos": "Prerequisites",
+        "prer.cuenta": "An AWS account with at least one Lambda function already deployed.",
+        "prer.admin": "Access to the IAM console to create a user and its policy, only during initial setup.",
+        "prer.datos": "The AWS region where the functions are deployed (e.g. us-east-1).",
+        "section.configuracion_fabricante": "Vendor / provider setup",
+        "fab.intro": "You will create a dedicated IAM user for Ruvic, with invocation permission restricted to its assigned functions. Do not reuse root credentials or another application's credentials.",
+        "fab.p1.t": "Define a name prefix for the functions you'll expose to Ruvic.",
+        "fab.p1.b": "By convention, use a dedicated prefix (e.g. ruvic-*) when naming the functions you want the agent to be able to invoke. This lets you write a precise IAM policy in the next step.",
+        "fab.p2.t": "Create the IAM policy.",
+        "fab.p2.b": "In IAM → Policies → Create policy → JSON tab:",
+        "fab.p2.note.title": "Note",
+        "fab.p2.note.body": "lambda:ListFunctions doesn't support Resource restriction (only \"*\"), so list_functions will always show the names of every function in the account, even though it can only invoke the ones matching the prefix.",
+        "fab.p3.t": "Create the IAM user and attach the policy.",
+        "fab.p3.b": "In IAM → Users → Create user → set \"Provide user access to the AWS Management Console\" to NO (this is a programmatic user) → attach the policy from step 2.",
+        "fab.p3.img": "[ Screenshot: IAM user creation with the attached policy — replace with assets/img/lambda-iam-user.png ]",
+        "fab.p4.t": "Generate access keys.",
+        "fab.p4.b": "On the user's page → \"Security credentials\" tab → \"Create access key\" → type \"Application running outside AWS\". Copy the Access Key ID and Secret Access Key (the latter is shown only once): you'll use them in the Ruvic form.",
+        "fab.p5.t": "Verify access from the command line.",
+        "fab.p5.b": "With the AWS CLI configured using those credentials:",
+        "fab.p5.result": "If it returns the function list (even empty), the vendor side is ready. Write down these values for the next section: Access Key ID, Secret Access Key and region.",
+        "section.permisos": "Required permissions",
+        "perm.intro": "Least-privilege principle: the Ruvic user only needs these permissions, limited to the dedicated function prefix. Do not grant lambda:*, lambda:CreateFunction, lambda:DeleteFunction, or lambda:UpdateFunctionCode.",
+        "table.permiso": "Permission",
+        "table.para_que": "Why it's needed",
+        "perm.list.body": "List the account's functions (lambda.list_functions)",
+        "perm.invoke.scope": "(per function prefix)",
+        "perm.invoke.body": "Execute a function with a payload (lambda.invoke)",
+        "perm.logs.scope": "(per log group prefix)",
+        "perm.logs.body": "Query a function's recent logs (lambda.get_logs)",
+        "section.configuracion_ruvic": "Configuration in Ruvic",
+        "ruvic.intro": "Go to Settings → Connectors, find the AWS Lambda card and click Configure. Fill in the form with the values from the previous section:",
+        "table.campo": "Form field",
+        "table.valor": "Value",
+        "ruvic.f.accesskey": "Access Key ID",
+        "ruvic.v.accesskey": "The Access Key ID from step 4",
+        "ruvic.f.secretkey": "Secret Access Key",
+        "ruvic.v.secretkey": "The Secret Access Key from step 4. Stored encrypted as a secret: the UI will never display it again",
+        "ruvic.f.region": "AWS Region",
+        "ruvic.v.region": "The region where the functions are deployed (e.g. us-east-1)",
+        "ruvic.f.timeout": "Connection timeout",
+        "ruvic.v.timeout": "Optional; defaults to 10 seconds",
+        "ruvic.save": "Save and click Test connection — the platform will verify access to Lambda in the configured region.",
+        "ruvic.img": "[ Screenshot: AWS Lambda connector form in Settings → Connectors — replace with assets/img/lambda-form.png ]",
+        "section.verificacion": "Verification",
+        "ver.p1.t": "Successful connection test.",
+        "ver.p1.b": "The Test connection button should return: “Successful connection to AWS Lambda in us-east-1”. The connector card switches to Configured.",
+        "ver.p2.t": "Minimal test automation.",
+        "ver.p2.b": "Open a new conversation with the agent and ask: “List the available Lambda functions and invoke [ruvic-prefixed-name] with an empty payload.” The agent should list the functions and invoke the given one, showing the result. If it does, the connector is fully operational.",
+        "section.solucion_problemas": "Troubleshooting",
+        "table.sintoma": "Message / symptom",
+        "table.causa": "Likely cause and fix",
+        "prob.s1": "“Invalid credentials or insufficient IAM permission”",
+        "prob.c1": "Mistyped Access Key or Secret Key, or the invoked function doesn't match the prefix authorized in the policy. Redo steps 2 and 4 of section 3.",
+        "prob.s2": "“Could not connect to the Lambda service … (timeout)”",
+        "prob.c2": "The configured region doesn't match the actual region where the functions live. Verify with aws lambda list-functions --region your-region.",
+        "prob.s3": "“The function does not exist”",
+        "prob.c3": "Mistyped function name, or the function is in a different region. Use lambda.list_functions first to confirm the exact name.",
+        "prob.s4": "The agent invokes the function but “there are no logs”",
+        "prob.c4": "The function just ran and CloudWatch hasn't propagated the logs yet (can take a few seconds), or logs:GetLogEvents is missing on that log group. Redo step 2 of section 3.",
+        "prob.s5": "Connector shows “Not configured” after saving",
+        "prob.c5": "A required field was left empty. Open it again and fill in Access Key ID, Secret Access Key and region.",
+        "section.faq_seguridad": "FAQ and security notes",
+        "faq.q1": "Can the agent invoke any function in my account?",
+        "faq.a1": "Only if you allow it in the IAM policy. With the example ruvic-* prefix, the agent can only execute (invoke) functions with that prefix, even though list_functions always shows the names of all of them (that action doesn't support Resource restriction).",
+        "faq.q2": "Where is the Secret Access Key stored?",
+        "faq.a2": "As a secret in the platform's credential store, tied to your user. The UI never displays it again; it only shows “set”. To change it, type a new one in the form; to keep it while editing other fields, leave the field empty.",
+        "faq.q3": "Credential rotation",
+        "faq.a3": "Recommended every 90 days or per your policy: generate a new Access Key in IAM → Security credentials, update it in the connector form, test the connection, then deactivate/delete the old key from the AWS console.",
+        "faq.q4": "What if the credentials are compromised?",
+        "faq.a4.li1": "Deactivate or delete the Access Key immediately in IAM → Security credentials.",
+        "faq.a4.li2": "Review recent activity for that user in AWS CloudTrail (function invocations you don't recognize).",
+        "faq.a4.li3": "Generate a new Access Key and update it in the connector form.",
+        "faq.q5": "Can I know the result of an asynchronous invocation?",
+        "faq.a5": "AWS doesn't expose an API to query a Lambda invocation's result by request id. Use lambda.get_logs to review the function's recent logs after an \"Event\"-mode invocation, or design your function to write its result to a queryable destination (a database, a queue, etc.).",
+        "faq.bp.title": "Best practices",
+        "faq.bp.body": "Always use a dedicated IAM user with invocation permission limited to a function prefix; never use the AWS account's root credentials; check function_error in every response before assuming an invocation succeeded; and never share the Secret Access Key over insecure channels.",
+      },
+    };
+    /* El portal aplica el idioma del usuario (localStorage ruvic-docs-lang)
+       y actualiza [data-i18n], [data-i18n-placeholder] y [data-i18n-alt]. */
+  </script>
+</body>
+</html>
