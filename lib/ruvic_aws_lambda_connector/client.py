@@ -48,10 +48,19 @@ _MAX_LOG_LIMIT = 500
 
 
 def _validate_function_name(name: str) -> str:
+    if name is not None and not isinstance(name, str):
+        raise LambdaDataError(f"function_name debe ser un string, no {type(name).__name__}.")
     name = (name or "").strip()
     if not name:
         raise LambdaDataError("function_name no puede estar vacío.")
     return name
+
+
+def _validate_limit(limit: Any, max_limit: int) -> int:
+    try:
+        return max(1, min(int(limit), max_limit))
+    except (TypeError, ValueError) as exc:
+        raise LambdaDataError(f"limit inválido: {limit!r}. Debe ser un número entero.") from exc
 
 
 def _wrap_client_error(exc: ClientError, not_found_message: str) -> LambdaConnectorError:
@@ -165,7 +174,7 @@ class LambdaClient:
             >>> client.list_functions()
             [{'name': 'procesar-pedido', 'arn': 'arn:aws:lambda:...', 'runtime': 'python3.12', ...}]
         """
-        limit = max(1, min(int(limit), _MAX_LIST_LIMIT))
+        limit = _validate_limit(limit, _MAX_LIST_LIMIT)
         client = self._get_lambda_client()
         try:
             response = client.list_functions(MaxItems=limit)
@@ -224,11 +233,15 @@ class LambdaClient:
             raise LambdaDataError(
                 "invocation_type debe ser 'RequestResponse' o 'Event'."
             )
+        try:
+            payload_bytes = json.dumps(payload or {}).encode("utf-8")
+        except (TypeError, ValueError) as exc:
+            raise LambdaDataError(f"payload no es serializable a JSON: {exc}") from exc
         client = self._get_lambda_client()
         kwargs: dict[str, Any] = {
             "FunctionName": function_name,
             "InvocationType": invocation_type,
-            "Payload": json.dumps(payload or {}).encode("utf-8"),
+            "Payload": payload_bytes,
         }
         if invocation_type == "RequestResponse":
             kwargs["LogType"] = "Tail"
@@ -291,7 +304,7 @@ class LambdaClient:
             [{'timestamp': '2026-07-17T10:00:00Z', 'message': 'START RequestId: ...'}]
         """
         function_name = _validate_function_name(function_name)
-        limit = max(1, min(int(limit), _MAX_LOG_LIMIT))
+        limit = _validate_limit(limit, _MAX_LOG_LIMIT)
         log_group = f"/aws/lambda/{function_name}"
         logs_client = self._get_logs_client()
         try:
